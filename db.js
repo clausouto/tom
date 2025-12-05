@@ -14,8 +14,8 @@ async function connectDB(dbname = 'tom') {
     // Create indexes for better query performance
     const messagesCollection = db.collection('messages');
     await messagesCollection.createIndex({ messageId: 1 }, { unique: true });
-    await messagesCollection.createIndex({ "author.id": 1 });
-    await messagesCollection.createIndex({ "channel.id": 1 });
+    await messagesCollection.createIndex({ "author": 1 });
+    await messagesCollection.createIndex({ "channel": 1 });
     await messagesCollection.createIndex({ "timestamps.created": -1 });
     console.log('Indexes created');
   }
