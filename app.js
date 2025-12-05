@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, Role, Guild, Events, TextChannel } = require("discord.js");
-const { connectDB, saveMessage, savePivot, getPivot, getMessageCount, getTFIDFWordsByAuthor } = require("./db.js");
+const { connectDB, saveMessage, savePivot, getPivot, getMessageCount } = require("./db.js");
 require("dotenv").config();
 
 const intents = Object.values(GatewayIntentBits);
@@ -103,15 +103,7 @@ client.once(Events.ClientReady, async () => {
     const existingCount = await getMessageCount(channel.id);
 
     try {
-        /*const messages = await getAllMessagesFromChannel(channel, user);
-        console.log(`[DEBUG] ========================================`);
-        console.log(`[DEBUG] FETCH COMPLETE`);
-        console.log(`[DEBUG] Fetched ${messages.length} messages from ${channel.name} for user ${user.user.tag}`);
-        console.log(`[DEBUG] Previously stored: ${existingCount} messages`);
-        console.log(`[DEBUG] Total in database: ${existingCount + messages.length}`);
-        console.log(`[DEBUG] ========================================`);*/
-        const topWords = await getTFIDFWordsByAuthor("481492678442221569", "167985983046811649");
-        console.log(`[DEBUG] Top words by author:`, JSON.stringify(topWords, null, 2));
+        const messages = await getAllMessagesFromChannel(channel);
     } catch (error) {
         console.error(`[ERROR] Failed to fetch messages:`, error);
     }
