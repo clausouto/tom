@@ -77,8 +77,8 @@ const getAllMessagesFromChannel = async (channel) => {
         
         // Add delay to respect rate limits
         if (pack.size === 100) {
-            console.log(`[DEBUG] Waiting 1000ms to respect rate limits...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log(`[DEBUG] Waiting 5000ms to respect rate limits...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
 
