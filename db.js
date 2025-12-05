@@ -99,17 +99,16 @@ async function saveMessage(message) {
   }
 }
 
-async function savePivot(channelId, userId, pivotId) {
+async function savePivot(channelId, pivotId) {
   try {
     const db = await connectDB();
     const pivotCollection = db.collection('fetch_pivot');
     
     await pivotCollection.updateOne(
-      { channelId, userId },
+      { channelId },
       { 
         $set: {
           channelId,
-          userId,
           lastPivotId: pivotId,
           updatedAt: new Date()
         }

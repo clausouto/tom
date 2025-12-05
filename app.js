@@ -70,7 +70,7 @@ const getAllMessagesFromChannel = async (channel) => {
         
         // Save pivot after each batch
         try {
-            await savePivot(channel.id, user.id, pivot);
+            await savePivot(channel.id, pivot);
         } catch (error) {
             console.error(`[ERROR] Failed to save pivot:`, error.message);
         }
