@@ -141,17 +141,11 @@ async function getPivot(channelId) {
 }
 
 async function getMessageCount(channelId) {
-  try {
-    const db = await connectDB();
-    const messagesCollection = db.collection('messages');
-    
-    const count = await messagesCollection.countDocuments({ 'channel.id': channelId });
-    console.log(`[DEBUG] Total messages in channel: ${count}`);
-    return count;
-  } catch (error) {
-    console.error(`[ERROR] Failed to get message count:`, error);
-    throw error;
-  }
+  const db = await connectDB();
+  const messagesCollection = db.collection('messages');
+  const count = await messagesCollection.countDocuments({ channel: channelId });
+  console.log(`[DEBUG] Total messages in channel: ${count}`);
+  return count;
 }
 
 module.exports = { connectDB, saveMessage, savePivot, getPivot, getMessageCount };

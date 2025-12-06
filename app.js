@@ -18,6 +18,10 @@ const client = new Client({
 const getAllMessagesFromChannel = async (channel) => {    
     const messages = [];
     
+    // Define the cutoff date: December 1, 2025 at 00:00
+    const cutoffDate = new Date('2025-12-01T00:00:00');
+    console.log(`[DEBUG] Cutoff date set to: ${cutoffDate.toLocaleString()}`);
+    
     // Get saved pivot to resume from crash
     let pivot = await getPivot(channel.id);
     if (!pivot) {
@@ -29,6 +33,7 @@ const getAllMessagesFromChannel = async (channel) => {
     
     let iteration = 0;
     let totalSaved = 0;
+    let reachedCutoff = false;
 
     while (true) {
         iteration++;
@@ -52,7 +57,16 @@ const getAllMessagesFromChannel = async (channel) => {
         
         // Save all messages in this batch
         for (const entry of pack.values()) {
-            const timestamp = new Date(entry.createdTimestamp).toLocaleString();
+            const messageDate = new Date(entry.createdTimestamp);
+            const timestamp = messageDate.toLocaleString();
+            
+            // Check if message is at or before the cutoff date
+            if (messageDate <= cutoffDate) {
+                console.log(`[DEBUG] ⏹ Reached cutoff date at message ${entry.id} (${timestamp})`);
+                reachedCutoff = true;
+                break;
+            }
+            
             console.log(`[DEBUG] Message: [${entry.author.tag}] [${timestamp}] ${entry.content.substring(0, 50)}${entry.content.length > 50 ? '...' : ''}`);
             messages.push(entry);
             
@@ -66,6 +80,12 @@ const getAllMessagesFromChannel = async (channel) => {
             } catch (error) {
                 console.error(`[ERROR] ✗ Failed to save message ${entry.id}:`, error.message);
             }
+        }
+        
+        // Break the outer loop if we reached the cutoff
+        if (reachedCutoff) {
+            console.log(`[DEBUG] Stopping fetch process - cutoff date reached`);
+            break;
         }
         
         // Save pivot after each batch
