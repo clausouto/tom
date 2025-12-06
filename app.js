@@ -20,7 +20,8 @@ const getAllMessagesFromChannel = async (channel) => {
     
     // Define the cutoff date: December 1, 2025 at 00:00
     const cutoffDate = new Date('2025-12-01T00:00:00');
-    console.log(`[DEBUG] Cutoff date set to: ${cutoffDate.toLocaleString()}`);
+    const cutoffTimestamp = cutoffDate.getTime();
+    console.log(`[DEBUG] Cutoff date set to: ${cutoffDate.toLocaleString()} (${cutoffTimestamp})`);
     
     // Get saved pivot to resume from crash
     let pivot = await getPivot(channel.id);
@@ -60,9 +61,10 @@ const getAllMessagesFromChannel = async (channel) => {
             const messageDate = new Date(entry.createdTimestamp);
             const timestamp = messageDate.toLocaleString();
             
-            // Check if message is at or before the cutoff date
-            if (messageDate <= cutoffDate) {
+            // Check if message has reached or passed the cutoff date (>= Dec 1, 2025 00:00)
+            if (entry.createdTimestamp >= cutoffTimestamp) {
                 console.log(`[DEBUG] ⏹ Reached cutoff date at message ${entry.id} (${timestamp})`);
+                console.log(`[DEBUG] Message timestamp: ${entry.createdTimestamp}, Cutoff: ${cutoffTimestamp}`);
                 reachedCutoff = true;
                 break;
             }
