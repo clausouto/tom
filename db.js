@@ -1,151 +1,135 @@
-const { MongoClient } = require("mongodb");
+const { Client, GatewayIntentBits, Role, Guild, Events, TextChannel } = require("discord.js");
+const { connectDB, saveMessage, savePivot, getPivot, getMessageCount } = require("./db.js");
 require("dotenv").config();
 
-let db = null;
-const uri = process.env.MONGODB_URI;
-const mongoClient = new MongoClient(uri);
-
-async function connectDB(dbname = 'tom') {
-  if (!db) {
-    await mongoClient.connect();
-    db = mongoClient.db(dbname);
-    console.log('Connected to MongoDB');
-    
-    // Create indexes for better query performance
-    const messagesCollection = db.collection('messages');
-    await messagesCollection.createIndex({ messageId: 1 }, { unique: true });
-    await messagesCollection.createIndex({ "author": 1 });
-    await messagesCollection.createIndex({ "channel": 1 });
-    await messagesCollection.createIndex({ "timestamps.created": -1 });
-    console.log('Indexes created');
-  }
-  return db;
-}
-
-async function saveMessage(message) {
-  try {
-    const db = await connectDB();
-    const messagesCollection = db.collection('messages');
-    
-    // Check if message already exists
-    const existingMessage = await messagesCollection.findOne({ messageId: message.id });
-    if (existingMessage) {
-      console.log(`[DEBUG] Message ${message.id} already exists, skipping...`);
-      return { skipped: true };
+const intents = Object.values(GatewayIntentBits);
+const client = new Client({
+    intents: intents,
+    partials: ['MESSAGE', 'CHANNEL', 'REACTION'],
+    allowedMentions: {
+        parse: ['users', 'roles', 'everyone'],
+        repliedUser: true,
     }
+});
 
-    // Process reactions
-    const reactions = [];
-    if (message.reactions && message.reactions.cache.size > 0) {
-      for (const reaction of message.reactions.cache.values()) {
-        const emoji = reaction.emoji.id 
-          ? { id: reaction.emoji.id, name: reaction.emoji.name, animated: reaction.emoji.animated }
-          : { name: reaction.emoji.name };
+/**
+* @param {TextChannel} channel
+*/
+const getAllMessagesFromChannel = async (channel) => {    
+    const messages = [];
+    
+    // Define the cutoff date: December 1, 2025 at 00:00
+    const cutoffDate = new Date('2025-12-01T00:00:00');
+    const cutoffTimestamp = cutoffDate.getTime();
+    console.log(`[DEBUG] Cutoff date set to: ${cutoffDate.toLocaleString()} (${cutoffTimestamp})`);
+    
+    // Get saved pivot to resume from crash
+    let pivot = await getPivot(channel.id);
+    if (!pivot) {
+        pivot = '1323788890632355840';
+        console.log(`[DEBUG] No saved pivot found, starting from: ${pivot}`);
+    } else {
+        console.log(`[DEBUG] Resuming from saved pivot: ${pivot}`);
+    }
+    
+    let iteration = 0;
+    let totalSaved = 0;
+    let reachedCutoff = false;
+
+    while (true) {
+        iteration++;
+        console.log(`[DEBUG] Fetch iteration ${iteration}, pivot: ${pivot}`);
         
-        // Fetch users who reacted (if needed for detailed tracking)
-        const users = [];
-        try {
-          const reactionUsers = await reaction.users.fetch();
-          reactionUsers.forEach(user => {
-            users.push({
-              id: user.id,
-              tag: user.tag,
-              username: user.username,
-              bot: user.bot
-            });
-          });
-        } catch (error) {
-          console.log(`[WARN] Could not fetch reaction users: ${error.message}`);
-        }
-
-        reactions.push({
-          emoji: emoji,
-          count: reaction.count,
-          me: reaction.me,
-          users: users
+        const startTime = Date.now();
+        const pack = await channel.messages.fetch({
+            limit: 100,
+            after: pivot,
         });
-      }
-    }
+        const fetchTime = Date.now() - startTime;
 
-    // Build the document
-    const messageDoc = {
-      messageId: message.id,
-      content: message.content,
-      author: message.author.id,
-      channel: message.channel.id,
-      guild: message.guild.id,
-      timestamps: {
-        created: new Date(message.createdTimestamp),
-        edited: message.editedTimestamp ? new Date(message.editedTimestamp) : null,
-        savedAt: new Date()
-      },
-      reactions: reactions,
-      type: message.type,
-      flags: message.flags.bitfield,
-      pinned: message.pinned,
-    };
-
-    // Upsert (insert or update if exists)
-    const result = await messagesCollection.updateOne(
-      { messageId: message.id },
-      { $set: messageDoc },
-      { upsert: true }
-    );
-
-    return result;
-  } catch (error) {
-    console.error(`[ERROR] Failed to save message ${message.id}:`, error);
-    throw error;
-  }
-}
-
-async function savePivot(channelId, pivotId) {
-  try {
-    const db = await connectDB();
-    const pivotCollection = db.collection('fetch_pivot');
-    
-    await pivotCollection.updateOne(
-      { channelId },
-      { 
-        $set: {
-          channelId,
-          lastPivotId: pivotId,
-          updatedAt: new Date()
+        console.log(`[DEBUG] Fetched ${pack.size} messages in iteration ${iteration} (took ${fetchTime}ms)`);
+        
+        if (pack.size === 0) {
+            console.log(`[DEBUG] No more messages to fetch. Breaking loop.`);
+            break;
         }
-      },
-      { upsert: true }
-    );
-    
-    console.log(`[DEBUG] Saved pivot: ${pivotId}`);
-  } catch (error) {
-    console.error(`[ERROR] Failed to save pivot:`, error);
-    throw error;
-  }
-}
 
-async function getPivot(channelId) {
-  try {
-    const db = await connectDB();
-    const pivotCollection = db.collection('fetch_pivot');
-    
-    const pivot = await pivotCollection.findOne({ channelId });
-    if (pivot) {
-      console.log(`[DEBUG] Retrieved pivot: ${pivot.lastPivotId}`);
-      return pivot.lastPivotId;
+        pivot = pack.first().id;
+        
+        // Save all messages in this batch
+        for (const entry of pack.values()) {
+            const messageDate = new Date(entry.createdTimestamp);
+            const timestamp = messageDate.toLocaleString();
+            
+            // Check if message has reached or passed the cutoff date (>= Dec 1, 2025 00:00)
+            if (entry.createdTimestamp >= cutoffTimestamp) {
+                console.log(`[DEBUG] ⏹ Reached cutoff date at message ${entry.id} (${timestamp})`);
+                console.log(`[DEBUG] Message timestamp: ${entry.createdTimestamp}, Cutoff: ${cutoffTimestamp}`);
+                reachedCutoff = true;
+                break;
+            }
+            
+            console.log(`[DEBUG] Message: [${entry.author.tag}] [${timestamp}] ${entry.content.substring(0, 50)}${entry.content.length > 50 ? '...' : ''}`);
+            messages.push(entry);
+            
+            // Save to MongoDB
+            try {
+                const result = await saveMessage(entry);
+                if (!result.skipped) {
+                    totalSaved++;
+                    console.log(`[DEBUG] ✓ Saved message ${entry.id} to MongoDB (Total: ${totalSaved})`);
+                }
+            } catch (error) {
+                console.error(`[ERROR] ✗ Failed to save message ${entry.id}:`, error.message);
+            }
+        }
+        
+        // Break the outer loop if we reached the cutoff
+        if (reachedCutoff) {
+            console.log(`[DEBUG] Stopping fetch process - cutoff date reached`);
+            break;
+        }
+        
+        // Save pivot after each batch
+        try {
+            await savePivot(channel.id, pivot);
+        } catch (error) {
+            console.error(`[ERROR] Failed to save pivot:`, error.message);
+        }
+        
+        // Add delay to respect rate limits
+        if (pack.size === 100) {
+            console.log(`[DEBUG] Waiting 5000ms to respect rate limits...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
     }
-    return null;
-  } catch (error) {
-    console.error(`[ERROR] Failed to get pivot:`, error);
-    throw error;
-  }
-}
 
-async function getMessageCount(channelId) {
-  const db = await connectDB();
-  const messagesCollection = db.collection('messages');
-  const count = await messagesCollection.countDocuments({ channel: channelId });
-  console.log(`[DEBUG] Total messages in channel: ${count}`);
-  return count;
-}
+    console.log(`[DEBUG] Total messages collected: ${messages.length}, Total saved: ${totalSaved}`);
+    return messages;
+};
 
-module.exports = { connectDB, saveMessage, savePivot, getPivot, getMessageCount };
+client.once(Events.ClientReady, async () => {
+    console.log('[DEBUG] Bot is ready and logged in!');
+    console.log(`[DEBUG] Bot username: ${client.user.tag}`);
+    
+    // Connect to MongoDB first
+    await connectDB();
+    
+    const user = client.guilds.cache.get("481492678442221569").members.cache.get("198040241544757248");
+    console.log(`[DEBUG] Target user: ${user.user.tag} (${user.id})`);
+    
+    const channel = client.channels.cache.get("481896480399949825");
+    console.log(`[DEBUG] Target channel: ${channel.name} (${channel.id})`);
+    
+    // Get existing message count
+    const existingCount = await getMessageCount(channel.id);
+
+    try {
+        const messages = await getAllMessagesFromChannel(channel);
+    } catch (error) {
+        console.error(`[ERROR] Failed to fetch messages:`, error);
+    }
+    //user.send("Hello! The bot is now online.");
+});
+
+client.login(process.env.DISCORD_TOKEN);
