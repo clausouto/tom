@@ -30,7 +30,7 @@ async function saveMessage(message) {
     // Check if message already exists
     const existingMessage = await messagesCollection.findOne({ messageId: message.id });
     if (existingMessage) {
-      console.log(`[DEBUG] Message ${message.id} already exists, skipping...`);
+      console.log(`Message ${message.id} already exists, skipping...`);
       return { skipped: true };
     }
 
@@ -55,7 +55,7 @@ async function saveMessage(message) {
             });
           });
         } catch (error) {
-          console.log(`[WARN] Could not fetch reaction users: ${error.message}`);
+          console.log(`Could not fetch reaction users: ${error.message}`);
         }
 
         reactions.push({
@@ -65,6 +65,8 @@ async function saveMessage(message) {
           users: users
         });
       }
+      // Clear reaction cache after processing
+      message.reactions.cache.clear();
     }
 
     // Build the document
@@ -94,7 +96,7 @@ async function saveMessage(message) {
 
     return result;
   } catch (error) {
-    console.error(`[ERROR] Failed to save message ${message.id}:`, error);
+    console.error(`Failed to save message ${message.id}:`, error);
     throw error;
   }
 }
@@ -116,9 +118,9 @@ async function savePivot(channelId, pivotId) {
       { upsert: true }
     );
     
-    console.log(`[DEBUG] Saved pivot: ${pivotId}`);
+    console.log(`Saved pivot: ${pivotId}`);
   } catch (error) {
-    console.error(`[ERROR] Failed to save pivot:`, error);
+    console.error(`Failed to save pivot:`, error);
     throw error;
   }
 }
@@ -130,22 +132,22 @@ async function getPivot(channelId) {
     
     const pivot = await pivotCollection.findOne({ channelId });
     if (pivot) {
-      console.log(`[DEBUG] Retrieved pivot: ${pivot.lastPivotId}`);
+      console.log(`Retrieved pivot: ${pivot.lastPivotId}`);
       return pivot.lastPivotId;
     }
     return null;
   } catch (error) {
-    console.error(`[ERROR] Failed to get pivot:`, error);
+    console.error(`Failed to get pivot:`, error);
     throw error;
   }
 }
 
-async function getMessageCount(channelId) {
-  const db = await connectDB();
-  const messagesCollection = db.collection('messages');
-  const count = await messagesCollection.countDocuments({ channel: channelId });
-  console.log(`[DEBUG] Total messages in channel: ${count}`);
-  return count;
+async function closeDB() {
+  if (mongoClient) {
+    await mongoClient.close();
+    db = null;
+    console.log('MongoDB connection closed');
+  }
 }
 
-module.exports = { connectDB, saveMessage, savePivot, getPivot, getMessageCount };
+module.exports = { connectDB, saveMessage, savePivot, getPivot, closeDB };
