@@ -24,7 +24,7 @@ const getAllMessagesFromChannel = async (channel) => {
     // Get saved pivot to resume from crash
     let pivot = await getPivot(channel.id);
     if (!pivot) {
-        pivot = '1323788890632355840';
+        pivot = '1323787799899410454';
         console.log(`No saved pivot found, starting from: ${pivot}`);
     } else {
         console.log(`Resuming from saved pivot: ${pivot}`);
@@ -115,7 +115,7 @@ client.once(Events.ClientReady, async () => {
     // Connect to MongoDB first
     await connectDB();
         
-    const channel = client.channels.cache.get("481896480399949825");
+    const channel = client.channels.cache.get("646875691043913748");
     console.log(`Target channel: ${channel.name} (${channel.id})`);
     
     try {
